@@ -1226,6 +1226,7 @@ function ItemModal({ editing, onSave, onClose }) {
 function SettingsView({ data, setData, showToast }) {
   const [f, setF] = useState(data.company);
   const fileInputRef = useRef(null);
+  const estimateFileInputRef = useRef(null);
   useEffect(() => setF(data.company), [data.company]);
 
   function save() {
@@ -1281,6 +1282,67 @@ function SettingsView({ data, setData, showToast }) {
     e.target.value = "";
   }
 
+  function exportEstimatesOnly() {
+    const payload = {
+      docType: "estimate",
+      exportedAt: new Date().toISOString(),
+      appVersion: "IMkuchou-1",
+      docs: data.docs.estimate || [],
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = todayISO().replace(/-/g, "");
+    a.href = url;
+    a.download = `imkuchou_estimates_${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`見積書${(data.docs.estimate || []).length}件を書き出しました`);
+  }
+
+  function triggerEstimateImport() {
+    estimateFileInputRef.current?.click();
+  }
+
+  function handleEstimateImportFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        const incoming = Array.isArray(parsed) ? parsed : parsed.docs;
+        if (!Array.isArray(incoming)) {
+          alert("見積書ファイルの形式が正しくありません。");
+          return;
+        }
+        const existing = data.docs.estimate || [];
+        const existingNumbers = new Set(existing.map(d => d.docNumber));
+        const newCount = incoming.filter(d => !existing.some(e => e.id === d.id)).length;
+        const updateCount = incoming.length - newCount;
+        const numberClashes = incoming.filter(d => existingNumbers.has(d.docNumber) && !existing.some(e => e.id === d.id)).length;
+        let msg = `見積書 ${incoming.length}件を取り込みます(新規 ${newCount}件・更新 ${updateCount}件)。\n他の書類(注文書・請求書など)や取引先マスタは変更されません。よろしいですか？`;
+        if (numberClashes > 0) msg += `\n\n⚠ ${numberClashes}件は書類番号が既存のものと重複しています。取り込み後、番号をご確認ください。`;
+        if (!confirm(msg)) return;
+        setData(d => {
+          const merged = [...(d.docs.estimate || [])];
+          incoming.forEach(inc => {
+            const idx = merged.findIndex(m => m.id === inc.id);
+            if (idx >= 0) merged[idx] = inc; else merged.push(inc);
+          });
+          return { ...d, docs: { ...d.docs, estimate: merged } };
+        });
+        showToast("見積書を取り込みました");
+      } catch (err) {
+        alert("ファイルの読み込みに失敗しました。見積書のエクスポートファイル(JSON)を選択してください。");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 560 }}>
       <div className="panel">
@@ -1294,6 +1356,22 @@ function SettingsView({ data, setData, showToast }) {
           <button className="btn btn-primary" onClick={exportBackup}>バックアップをダウンロード(JSON)</button>
           <button className="btn btn-ghost" onClick={triggerImport}>バックアップから復元</button>
           <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportFile} />
+        </div>
+      </div>
+
+      <div className="panel">
+        <h2>見積書だけを共有</h2>
+        <p style={{ fontSize: 12.5, color: "var(--line)", marginTop: 0, lineHeight: 1.7 }}>
+          見積書だけを別の端末・スタッフと共有したい場合はこちらを使ってください。
+          上の「データのバックアップ」と違い、<b>見積書だけ</b>を追加・更新します(注文書・請書・納品書・請求書、取引先マスタなどは変更されません)。
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-primary" onClick={exportEstimatesOnly}>見積書を書き出す(JSON)</button>
+          <button className="btn btn-ghost" onClick={triggerEstimateImport}>見積書を取り込む</button>
+          <input ref={estimateFileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleEstimateImportFile} />
+        </div>
+        <div className="note" style={{ marginTop: 10 }}>
+          各端末で独立して見積書番号(EST-年-連番)を採番しているため、同時期に別々の端末で作成した見積書同士は番号が重複することがあります。取り込み時に警告が出た場合は番号をご確認ください。
         </div>
       </div>
 

@@ -626,13 +626,14 @@ table.item-table {
   color: #e4e8ec;
   font-family: var(--font-mono);
 }
-.manual-body .note {
+.note {
   background: rgba(181,101,29,0.12);
   border-left: 3px solid var(--copper);
   padding: 8px 12px;
   border-radius: 0 4px 4px 0;
   font-size: 12.5px;
   margin-top: 8px;
+  color: #dcdfe3;
 }
 
 /* ==========================================================================
