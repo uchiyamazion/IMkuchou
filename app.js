@@ -313,6 +313,13 @@ function Binder({
   }, /*#__PURE__*/React.createElement("span", {
     className: "tab-dot"
   }), DOC_META[key].label)), /*#__PURE__*/React.createElement("button", {
+    className: `tab tab-util ${activeTab === "reports" ? "active" : ""}`,
+    onClick: () => setActiveTab("reports"),
+    style: {
+      writingMode: "horizontal-tb",
+      minHeight: "unset"
+    }
+  }, "経営レポート"), /*#__PURE__*/React.createElement("button", {
     className: `tab tab-util ${activeTab === "master" ? "active" : ""}`,
     onClick: () => setActiveTab("master"),
     style: {
@@ -1081,6 +1088,243 @@ function DocEditor({
 }
 
 /* ---------------------------------------------------------------------- */
+/* 経営レポート                                                           */
+/* ---------------------------------------------------------------------- */
+
+function last12MonthKeys() {
+  const keys = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  return keys;
+}
+function monthShortLabel(key) {
+  const [y, m] = key.split("-");
+  return `${Number(m)}月`;
+}
+function ReportsView({
+  data
+}) {
+  const invoices = data.docs.invoice || [];
+  const monthKeys = last12MonthKeys();
+  const monthTotals = monthKeys.map(key => {
+    const total = invoices.filter(inv => (inv.date || "").slice(0, 7) === key).reduce((s, inv) => s + calcTotals(inv.items, inv.taxRate).total, 0);
+    return {
+      key,
+      total
+    };
+  });
+  const maxMonthTotal = Math.max(1, ...monthTotals.map(m => m.total));
+  const thisMonthKey = monthKeys[monthKeys.length - 1];
+  const thisMonthTotal = monthTotals[monthTotals.length - 1].total;
+  const yearNow = new Date().getFullYear();
+  const yearTotal = invoices.filter(inv => (inv.date || "").slice(0, 4) === String(yearNow)).reduce((s, inv) => s + calcTotals(inv.items, inv.taxRate).total, 0);
+  const avgInvoice = invoices.length ? invoices.reduce((s, inv) => s + calcTotals(inv.items, inv.taxRate).total, 0) / invoices.length : 0;
+
+  // 取引先別ランキング(請求書ベース)
+  const byClient = {};
+  invoices.forEach(inv => {
+    const name = inv.client.name || "(取引先未設定)";
+    const total = calcTotals(inv.items, inv.taxRate).total;
+    const paid = Math.min(Number(inv.paidAmount) || 0, total);
+    if (!byClient[name]) byClient[name] = {
+      name,
+      total: 0,
+      paid: 0,
+      count: 0
+    };
+    byClient[name].total += total;
+    byClient[name].paid += inv.paymentStatus === "paid" ? total : paid;
+    byClient[name].count += 1;
+  });
+  const ranking = Object.values(byClient).sort((a, b) => b.total - a.total);
+  const grandTotal = ranking.reduce((s, r) => s + r.total, 0) || 1;
+
+  // 見積の成約率(見積から後続書類が作られた割合、簡易指標)
+  const estimates = data.docs.estimate || [];
+  const wonEstimates = estimates.filter(e => e.linkedTo && e.linkedTo.length > 0).length;
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))",
+      gap: 12,
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      padding: "14px 16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, yearNow, "年 累計売上(請求書ベース)"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 24,
+      fontWeight: 700,
+      color: "#e4e8ec"
+    }
+  }, yen(yearTotal))), /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      padding: "14px 16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, "今月(", monthShortLabel(thisMonthKey), ")の売上"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 24,
+      fontWeight: 700,
+      color: "#e4e8ec"
+    }
+  }, yen(thisMonthTotal))), /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      padding: "14px 16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, "請求書1件あたり平均"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 24,
+      fontWeight: 700,
+      color: "#e4e8ec"
+    }
+  }, yen(avgInvoice))), /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      padding: "14px 16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, "見積 → 成約(件)"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 24,
+      fontWeight: 700,
+      color: "#e4e8ec"
+    }
+  }, wonEstimates, " / ", estimates.length))), /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      padding: 18,
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontSize: 12.5,
+      color: "var(--line)",
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      margin: "0 0 16px"
+    }
+  }, "月次売上推移(直近12か月・請求書ベース)"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "flex-end",
+      gap: 6,
+      height: 160
+    }
+  }, monthTotals.map(m => /*#__PURE__*/React.createElement("div", {
+    key: m.key,
+    style: {
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      height: "100%"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 9.5,
+      color: "var(--line)",
+      fontFamily: "var(--font-mono)",
+      marginBottom: 4,
+      whiteSpace: "nowrap"
+    }
+  }, m.total > 0 ? Math.round(m.total / 1000) + "k" : ""), /*#__PURE__*/React.createElement("div", {
+    title: `${m.key}: ${yen(m.total)}`,
+    style: {
+      width: "100%",
+      maxWidth: 34,
+      height: `${Math.max(2, m.total / maxMonthTotal * 120)}px`,
+      background: m.key === thisMonthKey ? "var(--copper)" : "var(--steel)",
+      borderRadius: "2px 2px 0 0"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "var(--line)",
+      marginTop: 6
+    }
+  }, monthShortLabel(m.key)))))), /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      padding: 18
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontSize: 12.5,
+      color: "var(--line)",
+      textTransform: "uppercase",
+      letterSpacing: "0.08em",
+      margin: "0 0 12px"
+    }
+  }, "取引先別 売上ランキング(請求書ベース)"), ranking.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "empty-state"
+  }, /*#__PURE__*/React.createElement("p", null, "請求書がまだ作成されていません。")) : /*#__PURE__*/React.createElement("table", {
+    className: "doc-table"
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "#"), /*#__PURE__*/React.createElement("th", null, "取引先"), /*#__PURE__*/React.createElement("th", null, "請求件数"), /*#__PURE__*/React.createElement("th", null, "売上合計"), /*#__PURE__*/React.createElement("th", null, "入金済み"), /*#__PURE__*/React.createElement("th", null, "構成比"))), /*#__PURE__*/React.createElement("tbody", null, ranking.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: r.name
+  }, /*#__PURE__*/React.createElement("td", {
+    style: {
+      color: "var(--line)"
+    }
+  }, i + 1), /*#__PURE__*/React.createElement("td", null, r.name), /*#__PURE__*/React.createElement("td", null, r.count, "件"), /*#__PURE__*/React.createElement("td", {
+    className: "amount"
+  }, yen(r.total)), /*#__PURE__*/React.createElement("td", {
+    className: "amount",
+    style: {
+      color: r.paid >= r.total ? "#7fbf8a" : "#c7d0d8"
+    }
+  }, yen(r.paid)), /*#__PURE__*/React.createElement("td", {
+    style: {
+      width: 120
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#33383e",
+      borderRadius: 3,
+      overflow: "hidden",
+      height: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: `${r.total / grandTotal * 100}%`,
+      background: "var(--steel-light)",
+      height: "100%"
+    }
+  })))))))));
+}
+
+/* ---------------------------------------------------------------------- */
 /* マスタ管理(取引先・品目)                                               */
 /* ---------------------------------------------------------------------- */
 
@@ -1742,6 +1986,10 @@ function App() {
       setActiveTab: setActiveTab,
       openNewDoc: t => createAndOpen(t)
     });
+  } else if (activeTab === "reports") {
+    body = /*#__PURE__*/React.createElement(ReportsView, {
+      data: data
+    });
   } else if (activeTab === "master") {
     body = /*#__PURE__*/React.createElement(MasterView, {
       data: data,
@@ -1781,6 +2029,7 @@ function App() {
   }
   const titleMap = {
     dashboard: "ホーム",
+    reports: "経営レポート",
     master: "マスタ管理",
     settings: "自社設定"
   };
