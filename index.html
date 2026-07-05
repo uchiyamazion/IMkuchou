@@ -25,18 +25,18 @@
     if (el) {
       el.innerHTML = '読み込みに時間がかかっています。<br>ページを再読み込みしてください。改善しない場合は通信環境をご確認ください。<br><br><button onclick="location.reload()" style="padding:8px 16px;">再読み込み</button>';
     }
-  }, 8000);
+  }, 15000);
 </script>
 
 <!-- ライブラリは外部CDNに依存せずリポジトリに同梱(モバイル回線でのCDNブロック対策) -->
 <script src="vendor/react.production.min.js"></script>
 <script src="vendor/react-dom.production.min.js"></script>
-<!-- Babel standalone: allows JSX authoring without a build step -->
-<script src="vendor/babel.min.js"></script>
 <!-- PDF export -->
 <script src="vendor/html2pdf.bundle.min.js"></script>
 
-<script type="text/babel" data-presets="react" src="app.js?v=20260705b"></script>
+<!-- app.js は事前にJSX→JSへコンパイル済み(ビルド不要のBabel実行時変換をやめ、
+     読み込み速度と信頼性を優先。編集用のJSXソースは app.jsx を参照) -->
+<script src="app.js?v=20260705c"></script>
 </body>
 </html>
 <!-- rebuild trigger 1783231834 -->
