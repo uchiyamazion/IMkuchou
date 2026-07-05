@@ -16,17 +16,26 @@
 </head>
 <body>
 <div id="root">
-  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;color:#98a8b8;font-family:sans-serif;font-size:13px;">読み込み中…</div>
+  <div id="boot-loading" style="display:flex;align-items:center;justify-content:center;min-height:100vh;color:#98a8b8;font-family:sans-serif;font-size:13px;text-align:center;padding:20px;">読み込み中…</div>
 </div>
+<script>
+  // アプリが一定時間内に描画されない場合、原因の切り分けができるようメッセージを出す
+  setTimeout(function () {
+    var el = document.getElementById('boot-loading');
+    if (el) {
+      el.innerHTML = '読み込みに時間がかかっています。<br>ページを再読み込みしてください。改善しない場合は通信環境をご確認ください。<br><br><button onclick="location.reload()" style="padding:8px 16px;">再読み込み</button>';
+    }
+  }, 8000);
+</script>
 
-<!-- React 18 (UMD) -->
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<!-- ライブラリは外部CDNに依存せずリポジトリに同梱(モバイル回線でのCDNブロック対策) -->
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
 <!-- Babel standalone: allows JSX authoring without a build step -->
-<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="vendor/babel.min.js"></script>
 <!-- PDF export -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="vendor/html2pdf.bundle.min.js"></script>
 
-<script type="text/babel" data-presets="react" src="app.js?v=20260705"></script>
+<script type="text/babel" data-presets="react" src="app.js?v=20260705b"></script>
 </body>
 </html>
