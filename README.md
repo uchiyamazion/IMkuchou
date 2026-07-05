@@ -30,3 +30,4 @@
 - html2pdf.js によるPDF出力
 - Google Fonts: Zen Kaku Gothic New / Noto Sans JP / JetBrains Mono
 - ビルドプロセスなし、静的ファイルのみで GitHub Pages にそのままデプロイ
+
