@@ -209,6 +209,13 @@ function Binder({ activeTab, setActiveTab }) {
         </button>
       ))}
       <button
+        className={`tab tab-util ${activeTab === "manual" ? "active" : ""}`}
+        onClick={() => setActiveTab("manual")}
+        style={{ writingMode: "horizontal-tb", minHeight: "unset" }}
+      >
+        マニュアル
+      </button>
+      <button
         className={`tab tab-util ${activeTab === "reports" ? "active" : ""}`}
         onClick={() => setActiveTab("reports")}
         style={{ writingMode: "horizontal-tb", minHeight: "unset" }}
@@ -711,6 +718,127 @@ function DocEditor({ doc, data, updateDoc, company, onBack, onCreateNext, onExpo
 }
 
 /* ---------------------------------------------------------------------- */
+/* 操作マニュアル                                                         */
+/* ---------------------------------------------------------------------- */
+
+const MANUAL_SECTIONS = [
+  {
+    title: "はじめに",
+    body: (
+      <div>
+        <p>IMkuchouは、見積書・注文書・注文請書・納品書・請求書の5つの書類を1つのアプリで管理するシステムです。</p>
+        <ul>
+          <li>データはこの端末のブラウザ内(localStorage)にのみ保存されます。サーバーには送信されません。</li>
+          <li>ビルドや会員登録は不要で、URLを開くだけですぐに使えます。</li>
+          <li>左側のタブで書類の種類を切り替えます。一番下に「経営レポート」「マスタ管理」「自社設定」があります。</li>
+        </ul>
+        <div className="note">別の端末(PCとスマホなど)ではデータは共有されません。同じデータを使いたい場合は「自社設定」→「データのバックアップ」からエクスポートし、もう一方の端末でインポートしてください。</div>
+      </div>
+    ),
+  },
+  {
+    title: "書類の作成方法",
+    body: (
+      <div>
+        <ol>
+          <li>左のタブから作りたい書類(例:見積書)を選ぶ</li>
+          <li>一覧画面右上の「<span className="kbd">+ 新規見積書</span>」を押す</li>
+          <li>取引先を選択(マスタ未登録なら手入力もできます)、明細行を入力</li>
+          <li>自動的に小計・消費税・合計が計算され、下部にプレビューが表示されます</li>
+          <li>「PDF書き出し」でPDFとしてダウンロードできます</li>
+        </ol>
+      </div>
+    ),
+  },
+  {
+    title: "書類間の連携(ワークフロー)",
+    body: (
+      <div>
+        <p>2つの方法で書類をつなげて作成できます。</p>
+        <ul>
+          <li><b>連番通りに次を作る</b>:編集画面下部の「〇〇書を作成→」ボタン。見積書からは注文書、注文書からは注文請書…という順に、取引先・明細・備考を引き継いで次の書類を作成します。</li>
+          <li><b>任意の書類から作る</b>:一覧画面の「他の書類から作成」ボタン。たとえば請求書の一覧からこれを押すと、見積書・注文書・納品書など好きな書類を選んで、その内容を引き継いで請求書を直接作成できます(間の書類を省略できます)。</li>
+        </ul>
+        <p>作成された書類には「⤴ 見積書 EST-2026-001 から作成」のようにリンク元が、元の書類には「⤵ 請求書 INV-2026-001 を作成済み」のようにリンク先が表示されます。</p>
+        <div className="note">一度コピーされた後は別々のデータになります。後から元の書類を修正しても、既に作成した先の書類には自動反映されません。</div>
+      </div>
+    ),
+  },
+  {
+    title: "請求書の入金管理",
+    body: (
+      <div>
+        <p>請求書の編集画面には「入金管理」欄があり、未入金・一部入金・入金済みを記録できます。</p>
+        <ul>
+          <li>支払期限を過ぎても未入金の請求書は、一覧・編集画面の両方で赤く警告表示されます</li>
+          <li>ダッシュボードに未回収金額の合計、未入金件数、期限超過件数が表示されます</li>
+        </ul>
+      </div>
+    ),
+  },
+  {
+    title: "経営レポートの見方",
+    body: (
+      <div>
+        <ul>
+          <li><b>月次売上推移</b>:直近12か月分の請求書合計金額を棒グラフで表示(今月はオレンジ)</li>
+          <li><b>取引先別売上ランキング</b>:請求書ベースで取引先ごとの売上合計・入金済み額・構成比を確認できます</li>
+          <li><b>見積 → 成約</b>:見積書のうち、後続の書類(注文書など)が作られた件数の割合です。おおまかな成約率の目安になります</li>
+        </ul>
+      </div>
+    ),
+  },
+  {
+    title: "マスタ管理・自社設定",
+    body: (
+      <div>
+        <p><b>マスタ管理</b>では、よく使う取引先・品目を登録しておくと、書類作成時にプルダウンから選ぶだけで済み入力の手間が減ります。</p>
+        <p><b>自社設定</b>では、会社名・住所・振込先・インボイス登録番号を設定します。ここで入力した内容は、すべての書類のプレビュー・PDFに自動的に反映されます(振込先は請求書、インボイス登録番号は請求書のみに表示)。</p>
+      </div>
+    ),
+  },
+  {
+    title: "データのバックアップ・復元",
+    body: (
+      <div>
+        <p>「自社設定」画面の一番上に「データのバックアップ」があります。</p>
+        <ul>
+          <li><b>バックアップをダウンロード</b>:全データ(書類・取引先・品目・自社情報)をJSONファイルとして保存します</li>
+          <li><b>バックアップから復元</b>:保存したJSONファイルを選択すると、現在のデータを丸ごと置き換えます(確認ダイアログが出ます)</li>
+        </ul>
+        <div className="note">データはこの端末にしか保存されないため、機種変更・ブラウザのデータ削除に備えて、月1回など定期的にバックアップをダウンロードしておくことを強くおすすめします。</div>
+      </div>
+    ),
+  },
+  {
+    title: "よくある質問・トラブルシューティング",
+    body: (
+      <div>
+        <ul>
+          <li><b>Q. 読み込みが遅い/止まる</b> — 回線が不安定な可能性があります。再読み込みをお試しください。15秒経っても表示されない場合はエラーメッセージと再読み込みボタンが出ます。</li>
+          <li><b>Q. 別のスマホ・PCでも同じデータを見たい</b> — 「データのバックアップ」でエクスポートしたファイルを、もう一方の端末でインポートしてください。自動同期はしていません。</li>
+          <li><b>Q. 書類番号を打ち間違えて削除してしまった</b> — 一覧から削除すると復元できません。定期的なバックアップをおすすめします。</li>
+          <li><b>Q. 消費税率を変えたい</b> — 各書類の編集画面で書類ごとに消費税率を設定できます(既定10%)。</li>
+        </ul>
+      </div>
+    ),
+  },
+];
+
+function ManualView() {
+  return (
+    <div style={{ maxWidth: 720 }}>
+      {MANUAL_SECTIONS.map((s, i) => (
+        <details className="manual-section" key={i} open={i === 0}>
+          <summary>{s.title}</summary>
+          <div className="manual-body">{s.body}</div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
 /* 経営レポート                                                           */
 /* ---------------------------------------------------------------------- */
 
@@ -1180,6 +1308,8 @@ function App() {
   let body;
   if (activeTab === "dashboard") {
     body = <Dashboard data={data} setActiveTab={setActiveTab} openNewDoc={(t) => createAndOpen(t)} />;
+  } else if (activeTab === "manual") {
+    body = <ManualView />;
   } else if (activeTab === "reports") {
     body = <ReportsView data={data} />;
   } else if (activeTab === "master") {
@@ -1217,7 +1347,7 @@ function App() {
     }
   }
 
-  const titleMap = { dashboard: "ホーム", reports: "経営レポート", master: "マスタ管理", settings: "自社設定" };
+  const titleMap = { dashboard: "ホーム", manual: "マニュアル", reports: "経営レポート", master: "マスタ管理", settings: "自社設定" };
   const pageTitle = titleMap[activeTab] || DOC_META[activeTab]?.label || "";
   const pageSub = DOC_ORDER.includes(activeTab)
     ? (activeDocId ? "書類を編集" : `${DOC_META[activeTab].label} 一覧`)
