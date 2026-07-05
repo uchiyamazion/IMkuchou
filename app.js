@@ -182,6 +182,22 @@ function calcTotals(items, taxRate) {
     total: subtotal + tax
   };
 }
+function calcCostTotal(costItems) {
+  return (costItems || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
+}
+function calcProfit(items, taxRate, costItems) {
+  const {
+    subtotal
+  } = calcTotals(items, taxRate);
+  const cost = calcCostTotal(costItems);
+  const profit = subtotal - cost;
+  const margin = subtotal > 0 ? profit / subtotal * 100 : 0;
+  return {
+    cost,
+    profit,
+    margin
+  };
+}
 function blankItemRow() {
   return {
     id: uid(),
@@ -189,6 +205,15 @@ function blankItemRow() {
     qty: 1,
     unit: "式",
     unitPrice: 0
+  };
+}
+const COST_CATEGORIES = ["外注費", "部材費", "交通費", "その他"];
+function blankCostRow() {
+  return {
+    id: uid(),
+    category: "外注費",
+    name: "",
+    amount: 0
   };
 }
 function makeBlankDoc(docType) {
@@ -214,6 +239,7 @@ function makeBlankDoc(docType) {
       contact: ""
     },
     items: [blankItemRow()],
+    costItems: [],
     taxRate: 10,
     notes: "",
     status: "draft",
@@ -784,6 +810,7 @@ function DocEditor({
 }) {
   const meta = DOC_META[doc.docType];
   const totals = calcTotals(doc.items, doc.taxRate);
+  const profit = calcProfit(doc.items, doc.taxRate, doc.costItems);
   function patch(fields) {
     updateDoc(doc.docType, doc.id, fields);
   }
@@ -833,6 +860,24 @@ function DocEditor({
     if (doc.items.length <= 1) return;
     patch({
       items: doc.items.filter(it => it.id !== itemId)
+    });
+  }
+  function updateCost(costId, fields) {
+    patch({
+      costItems: (doc.costItems || []).map(c => c.id === costId ? {
+        ...c,
+        ...fields
+      } : c)
+    });
+  }
+  function addCost() {
+    patch({
+      costItems: [...(doc.costItems || []), blankCostRow()]
+    });
+  }
+  function removeCost(costId) {
+    patch({
+      costItems: (doc.costItems || []).filter(c => c.id !== costId)
     });
   }
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
@@ -1139,7 +1184,96 @@ function DocEditor({
     }
   }, /*#__PURE__*/React.createElement("span", null, "合計"), /*#__PURE__*/React.createElement("span", {
     className: "amount"
-  }, yen(totals.total)))))), /*#__PURE__*/React.createElement("h2", {
+  }, yen(totals.total)))))), /*#__PURE__*/React.createElement("div", {
+    className: "panel",
+    style: {
+      marginTop: 20
+    }
+  }, /*#__PURE__*/React.createElement("h2", null, "原価管理(社内用・書類・PDFには表示されません)"), /*#__PURE__*/React.createElement("div", {
+    className: "item-header",
+    style: {
+      gridTemplateColumns: "110px 1fr 100px 28px"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "区分"), /*#__PURE__*/React.createElement("span", null, "内容"), /*#__PURE__*/React.createElement("span", null, "金額"), /*#__PURE__*/React.createElement("span", null)), (doc.costItems || []).map(c => /*#__PURE__*/React.createElement("div", {
+    className: "item-row",
+    key: c.id,
+    style: {
+      gridTemplateColumns: "110px 1fr 100px 28px"
+    }
+  }, /*#__PURE__*/React.createElement("select", {
+    value: c.category,
+    onChange: e => updateCost(c.id, {
+      category: e.target.value
+    })
+  }, COST_CATEGORIES.map(cat => /*#__PURE__*/React.createElement("option", {
+    key: cat,
+    value: cat
+  }, cat))), /*#__PURE__*/React.createElement("input", {
+    value: c.name,
+    onChange: e => updateCost(c.id, {
+      name: e.target.value
+    }),
+    placeholder: "例：〇〇電気工事(外注)"
+  }), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: c.amount,
+    onChange: e => updateCost(c.id, {
+      amount: e.target.value
+    })
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "row-del",
+    onClick: () => removeCost(c.id),
+    title: "削除",
+    "aria-label": "この行を削除"
+  }, "×"))), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-ghost btn-sm",
+    onClick: addCost,
+    style: {
+      marginTop: 6
+    }
+  }, "+ 原価行を追加(外注費・部材費など)"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 16,
+      borderTop: "1px solid #3a4048",
+      paddingTop: 12,
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: "var(--line)"
+    }
+  }, "原価合計"), /*#__PURE__*/React.createElement("div", {
+    className: "amount",
+    style: {
+      fontSize: 16,
+      color: "#e4e8ec"
+    }
+  }, yen(profit.cost))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: "var(--line)"
+    }
+  }, "粗利(売上-原価)"), /*#__PURE__*/React.createElement("div", {
+    className: "amount",
+    style: {
+      fontSize: 16,
+      color: profit.profit >= 0 ? "#7fbf8a" : "#f2a0a0"
+    }
+  }, yen(profit.profit))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: "var(--line)"
+    }
+  }, "粗利率"), /*#__PURE__*/React.createElement("div", {
+    className: "amount",
+    style: {
+      fontSize: 16,
+      color: profit.margin >= 0 ? "#7fbf8a" : "#f2a0a0"
+    }
+  }, profit.margin.toFixed(1), "%")))), /*#__PURE__*/React.createElement("h2", {
     style: {
       color: "#e4e8ec",
       fontSize: 13,
@@ -1177,8 +1311,11 @@ const MANUAL_SECTIONS = [{
   title: "請求書の入金管理",
   body: /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "請求書の編集画面には「入金管理」欄があり、未入金・一部入金・入金済みを記録できます。"), /*#__PURE__*/React.createElement("ul", null, /*#__PURE__*/React.createElement("li", null, "支払期限を過ぎても未入金の請求書は、一覧・編集画面の両方で赤く警告表示されます"), /*#__PURE__*/React.createElement("li", null, "ダッシュボードに未回収金額の合計、未入金件数、期限超過件数が表示されます")))
 }, {
+  title: "原価管理・粗利の見方",
+  body: /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, "各書類の編集画面、明細の下に「原価管理」欄があります。外注費・部材費・交通費などを記録すると、その場で原価合計・粗利(売上-原価)・粗利率が計算されます。"), /*#__PURE__*/React.createElement("ul", null, /*#__PURE__*/React.createElement("li", null, "原価管理の内容は", /*#__PURE__*/React.createElement("b", null, "社内用データ"), "で、お客様に見えるプレビュー・PDFには一切表示されません"), /*#__PURE__*/React.createElement("li", null, "見積書の段階から入力しておけば、受注前に想定利益を確認できます"), /*#__PURE__*/React.createElement("li", null, "ワークフロー連携で次の書類を作成する際、原価情報も一緒に引き継がれます"), /*#__PURE__*/React.createElement("li", null, "経営レポートには、年間の原価合計・粗利・粗利率、取引先別の原価・粗利も集計表示されます")))
+}, {
   title: "経営レポートの見方",
-  body: /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("ul", null, /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("b", null, "月次売上推移"), ":直近12か月分の請求書合計金額を棒グラフで表示(今月はオレンジ)"), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("b", null, "取引先別売上ランキング"), ":請求書ベースで取引先ごとの売上合計・入金済み額・構成比を確認できます"), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("b", null, "見積 → 成約"), ":見積書のうち、後続の書類(注文書など)が作られた件数の割合です。おおまかな成約率の目安になります")))
+  body: /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("ul", null, /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("b", null, "月次売上推移"), ":直近12か月分の請求書合計金額を棒グラフで表示(今月はオレンジ)"), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("b", null, "取引先別売上ランキング"), ":請求書ベースで取引先ごとの売上合計・原価・粗利・入金済み額・構成比を確認できます"), /*#__PURE__*/React.createElement("li", null, /*#__PURE__*/React.createElement("b", null, "見積 → 成約"), ":見積書のうち、後続の書類(注文書など)が作られた件数の割合です。おおまかな成約率の目安になります")))
 }, {
   title: "マスタ管理・自社設定",
   body: /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("b", null, "マスタ管理"), "では、よく使う取引先・品目を登録しておくと、書類作成時にプルダウンから選ぶだけで済み入力の手間が減ります。"), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("b", null, "自社設定"), "では、会社名・住所・振込先・インボイス登録番号を設定します。ここで入力した内容は、すべての書類のプレビュー・PDFに自動的に反映されます(振込先は請求書、インボイス登録番号は請求書のみに表示)。"))
@@ -1247,18 +1384,27 @@ function ReportsView({
     const name = inv.client.name || "(取引先未設定)";
     const total = calcTotals(inv.items, inv.taxRate).total;
     const paid = Math.min(Number(inv.paidAmount) || 0, total);
+    const cost = calcCostTotal(inv.costItems);
     if (!byClient[name]) byClient[name] = {
       name,
       total: 0,
       paid: 0,
-      count: 0
+      count: 0,
+      cost: 0
     };
     byClient[name].total += total;
     byClient[name].paid += inv.paymentStatus === "paid" ? total : paid;
+    byClient[name].cost += cost;
     byClient[name].count += 1;
   });
   const ranking = Object.values(byClient).sort((a, b) => b.total - a.total);
   const grandTotal = ranking.reduce((s, r) => s + r.total, 0) || 1;
+
+  // 原価・粗利(今年・請求書ベース)
+  const yearInvoices = invoices.filter(inv => (inv.date || "").slice(0, 4) === String(yearNow));
+  const yearCost = yearInvoices.reduce((s, inv) => s + calcCostTotal(inv.costItems), 0);
+  const yearProfit = yearTotal - yearCost;
+  const yearMargin = yearTotal > 0 ? yearProfit / yearTotal * 100 : 0;
 
   // 見積の成約率(見積から後続書類が作られた割合、簡易指標)
   const estimates = data.docs.estimate || [];
@@ -1339,6 +1485,64 @@ function ReportsView({
       color: "#e4e8ec"
     }
   }, wonEstimates, " / ", estimates.length))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))",
+      gap: 12,
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      padding: "14px 16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, yearNow, "年 原価合計"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 24,
+      fontWeight: 700,
+      color: "#e4e8ec"
+    }
+  }, yen(yearCost))), /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      padding: "14px 16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, yearNow, "年 粗利"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 24,
+      fontWeight: 700,
+      color: yearProfit >= 0 ? "#7fbf8a" : "#f2a0a0"
+    }
+  }, yen(yearProfit))), /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      padding: "14px 16px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, yearNow, "年 粗利率"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 24,
+      fontWeight: 700,
+      color: yearMargin >= 0 ? "#7fbf8a" : "#f2a0a0"
+    }
+  }, yearMargin.toFixed(1), "%"))), /*#__PURE__*/React.createElement("div", {
     className: "doc-table-wrap",
     style: {
       padding: 18,
@@ -1409,7 +1613,7 @@ function ReportsView({
     className: "empty-state"
   }, /*#__PURE__*/React.createElement("p", null, "請求書がまだ作成されていません。")) : /*#__PURE__*/React.createElement("table", {
     className: "doc-table"
-  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "#"), /*#__PURE__*/React.createElement("th", null, "取引先"), /*#__PURE__*/React.createElement("th", null, "請求件数"), /*#__PURE__*/React.createElement("th", null, "売上合計"), /*#__PURE__*/React.createElement("th", null, "入金済み"), /*#__PURE__*/React.createElement("th", null, "構成比"))), /*#__PURE__*/React.createElement("tbody", null, ranking.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "#"), /*#__PURE__*/React.createElement("th", null, "取引先"), /*#__PURE__*/React.createElement("th", null, "請求件数"), /*#__PURE__*/React.createElement("th", null, "売上合計"), /*#__PURE__*/React.createElement("th", null, "原価"), /*#__PURE__*/React.createElement("th", null, "粗利"), /*#__PURE__*/React.createElement("th", null, "入金済み"), /*#__PURE__*/React.createElement("th", null, "構成比"))), /*#__PURE__*/React.createElement("tbody", null, ranking.map((r, i) => /*#__PURE__*/React.createElement("tr", {
     key: r.name
   }, /*#__PURE__*/React.createElement("td", {
     style: {
@@ -1420,11 +1624,21 @@ function ReportsView({
   }, yen(r.total)), /*#__PURE__*/React.createElement("td", {
     className: "amount",
     style: {
+      color: "#c7d0d8"
+    }
+  }, yen(r.cost)), /*#__PURE__*/React.createElement("td", {
+    className: "amount",
+    style: {
+      color: r.total - r.cost >= 0 ? "#7fbf8a" : "#f2a0a0"
+    }
+  }, yen(r.total - r.cost)), /*#__PURE__*/React.createElement("td", {
+    className: "amount",
+    style: {
       color: r.paid >= r.total ? "#7fbf8a" : "#c7d0d8"
     }
   }, yen(r.paid)), /*#__PURE__*/React.createElement("td", {
     style: {
-      width: 120
+      width: 100
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2042,6 +2256,10 @@ function App() {
         workOverview: sourceDoc.workOverview || "",
         items: sourceDoc.items.map(it => ({
           ...it,
+          id: uid()
+        })),
+        costItems: (sourceDoc.costItems || []).map(c => ({
+          ...c,
           id: uid()
         })),
         taxRate: sourceDoc.taxRate,

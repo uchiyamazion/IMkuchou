@@ -125,8 +125,23 @@ function calcTotals(items, taxRate) {
   return { subtotal, tax, total: subtotal + tax };
 }
 
+function calcCostTotal(costItems) {
+  return (costItems || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
+}
+function calcProfit(items, taxRate, costItems) {
+  const { subtotal } = calcTotals(items, taxRate);
+  const cost = calcCostTotal(costItems);
+  const profit = subtotal - cost;
+  const margin = subtotal > 0 ? (profit / subtotal) * 100 : 0;
+  return { cost, profit, margin };
+}
+
 function blankItemRow() {
   return { id: uid(), name: "", qty: 1, unit: "式", unitPrice: 0 };
+}
+const COST_CATEGORIES = ["外注費", "部材費", "交通費", "その他"];
+function blankCostRow() {
+  return { id: uid(), category: "外注費", name: "", amount: 0 };
 }
 
 function makeBlankDoc(docType) {
@@ -140,6 +155,7 @@ function makeBlankDoc(docType) {
     clientId: "",
     client: { name: "", honor: "御中", zip: "", address: "", tel: "", fax: "", contact: "" },
     items: [blankItemRow()],
+    costItems: [],
     taxRate: 10,
     notes: "",
     status: "draft",
@@ -543,6 +559,7 @@ function PaperPreview({ doc, company, printRef }) {
 function DocEditor({ doc, data, updateDoc, company, onBack, onCreateNext, onExportPdf, printRef }) {
   const meta = DOC_META[doc.docType];
   const totals = calcTotals(doc.items, doc.taxRate);
+  const profit = calcProfit(doc.items, doc.taxRate, doc.costItems);
 
   function patch(fields) {
     updateDoc(doc.docType, doc.id, fields);
@@ -564,6 +581,15 @@ function DocEditor({ doc, data, updateDoc, company, onBack, onCreateNext, onExpo
   function removeItem(itemId) {
     if (doc.items.length <= 1) return;
     patch({ items: doc.items.filter(it => it.id !== itemId) });
+  }
+  function updateCost(costId, fields) {
+    patch({ costItems: (doc.costItems || []).map(c => c.id === costId ? { ...c, ...fields } : c) });
+  }
+  function addCost() {
+    patch({ costItems: [...(doc.costItems || []), blankCostRow()] });
+  }
+  function removeCost(costId) {
+    patch({ costItems: (doc.costItems || []).filter(c => c.id !== costId) });
   }
 
   return (
@@ -734,6 +760,39 @@ function DocEditor({ doc, data, updateDoc, company, onBack, onCreateNext, onExpo
         </div>
       </div>
 
+      <div className="panel" style={{ marginTop: 20 }}>
+        <h2>原価管理(社内用・書類・PDFには表示されません)</h2>
+        <div className="item-header" style={{ gridTemplateColumns: "110px 1fr 100px 28px" }}>
+          <span>区分</span><span>内容</span><span>金額</span><span></span>
+        </div>
+        {(doc.costItems || []).map(c => (
+          <div className="item-row" key={c.id} style={{ gridTemplateColumns: "110px 1fr 100px 28px" }}>
+            <select value={c.category} onChange={(e) => updateCost(c.id, { category: e.target.value })}>
+              {COST_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+            </select>
+            <input value={c.name} onChange={(e) => updateCost(c.id, { name: e.target.value })} placeholder="例：〇〇電気工事(外注)" />
+            <input type="number" value={c.amount} onChange={(e) => updateCost(c.id, { amount: e.target.value })} />
+            <button className="row-del" onClick={() => removeCost(c.id)} title="削除" aria-label="この行を削除">×</button>
+          </div>
+        ))}
+        <button className="btn btn-ghost btn-sm" onClick={addCost} style={{ marginTop: 6 }}>+ 原価行を追加(外注費・部材費など)</button>
+
+        <div style={{ marginTop: 16, borderTop: "1px solid #3a4048", paddingTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 11.5, color: "var(--line)" }}>原価合計</div>
+            <div className="amount" style={{ fontSize: 16, color: "#e4e8ec" }}>{yen(profit.cost)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: "var(--line)" }}>粗利(売上-原価)</div>
+            <div className="amount" style={{ fontSize: 16, color: profit.profit >= 0 ? "#7fbf8a" : "#f2a0a0" }}>{yen(profit.profit)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: "var(--line)" }}>粗利率</div>
+            <div className="amount" style={{ fontSize: 16, color: profit.margin >= 0 ? "#7fbf8a" : "#f2a0a0" }}>{profit.margin.toFixed(1)}%</div>
+          </div>
+        </div>
+      </div>
+
       <h2 style={{ color: "#e4e8ec", fontSize: 13, margin: "24px 0 10px" }}>プレビュー</h2>
       <div className="paper-scroll">
         <PaperPreview doc={doc} company={company} printRef={printRef} />
@@ -802,12 +861,26 @@ const MANUAL_SECTIONS = [
     ),
   },
   {
+    title: "原価管理・粗利の見方",
+    body: (
+      <div>
+        <p>各書類の編集画面、明細の下に「原価管理」欄があります。外注費・部材費・交通費などを記録すると、その場で原価合計・粗利(売上-原価)・粗利率が計算されます。</p>
+        <ul>
+          <li>原価管理の内容は<b>社内用データ</b>で、お客様に見えるプレビュー・PDFには一切表示されません</li>
+          <li>見積書の段階から入力しておけば、受注前に想定利益を確認できます</li>
+          <li>ワークフロー連携で次の書類を作成する際、原価情報も一緒に引き継がれます</li>
+          <li>経営レポートには、年間の原価合計・粗利・粗利率、取引先別の原価・粗利も集計表示されます</li>
+        </ul>
+      </div>
+    ),
+  },
+  {
     title: "経営レポートの見方",
     body: (
       <div>
         <ul>
           <li><b>月次売上推移</b>:直近12か月分の請求書合計金額を棒グラフで表示(今月はオレンジ)</li>
-          <li><b>取引先別売上ランキング</b>:請求書ベースで取引先ごとの売上合計・入金済み額・構成比を確認できます</li>
+          <li><b>取引先別売上ランキング</b>:請求書ベースで取引先ごとの売上合計・原価・粗利・入金済み額・構成比を確認できます</li>
           <li><b>見積 → 成約</b>:見積書のうち、後続の書類(注文書など)が作られた件数の割合です。おおまかな成約率の目安になります</li>
         </ul>
       </div>
@@ -906,13 +979,21 @@ function ReportsView({ data }) {
     const name = inv.client.name || "(取引先未設定)";
     const total = calcTotals(inv.items, inv.taxRate).total;
     const paid = Math.min(Number(inv.paidAmount) || 0, total);
-    if (!byClient[name]) byClient[name] = { name, total: 0, paid: 0, count: 0 };
+    const cost = calcCostTotal(inv.costItems);
+    if (!byClient[name]) byClient[name] = { name, total: 0, paid: 0, count: 0, cost: 0 };
     byClient[name].total += total;
     byClient[name].paid += (inv.paymentStatus === "paid") ? total : paid;
+    byClient[name].cost += cost;
     byClient[name].count += 1;
   });
   const ranking = Object.values(byClient).sort((a, b) => b.total - a.total);
   const grandTotal = ranking.reduce((s, r) => s + r.total, 0) || 1;
+
+  // 原価・粗利(今年・請求書ベース)
+  const yearInvoices = invoices.filter(inv => (inv.date || "").slice(0, 4) === String(yearNow));
+  const yearCost = yearInvoices.reduce((s, inv) => s + calcCostTotal(inv.costItems), 0);
+  const yearProfit = yearTotal - yearCost;
+  const yearMargin = yearTotal > 0 ? (yearProfit / yearTotal) * 100 : 0;
 
   // 見積の成約率(見積から後続書類が作られた割合、簡易指標)
   const estimates = data.docs.estimate || [];
@@ -936,6 +1017,21 @@ function ReportsView({ data }) {
         <div className="doc-table-wrap" style={{ padding: "14px 16px" }}>
           <div style={{ fontSize: 12, color: "var(--line)" }}>見積 → 成約(件)</div>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 24, fontWeight: 700, color: "#e4e8ec" }}>{wonEstimates} / {estimates.length}</div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 12, marginBottom: 20 }}>
+        <div className="doc-table-wrap" style={{ padding: "14px 16px" }}>
+          <div style={{ fontSize: 12, color: "var(--line)" }}>{yearNow}年 原価合計</div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 24, fontWeight: 700, color: "#e4e8ec" }}>{yen(yearCost)}</div>
+        </div>
+        <div className="doc-table-wrap" style={{ padding: "14px 16px" }}>
+          <div style={{ fontSize: 12, color: "var(--line)" }}>{yearNow}年 粗利</div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 24, fontWeight: 700, color: yearProfit >= 0 ? "#7fbf8a" : "#f2a0a0" }}>{yen(yearProfit)}</div>
+        </div>
+        <div className="doc-table-wrap" style={{ padding: "14px 16px" }}>
+          <div style={{ fontSize: 12, color: "var(--line)" }}>{yearNow}年 粗利率</div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 24, fontWeight: 700, color: yearMargin >= 0 ? "#7fbf8a" : "#f2a0a0" }}>{yearMargin.toFixed(1)}%</div>
         </div>
       </div>
 
@@ -969,7 +1065,7 @@ function ReportsView({ data }) {
           <div className="empty-state"><p>請求書がまだ作成されていません。</p></div>
         ) : (
           <table className="doc-table">
-            <thead><tr><th>#</th><th>取引先</th><th>請求件数</th><th>売上合計</th><th>入金済み</th><th>構成比</th></tr></thead>
+            <thead><tr><th>#</th><th>取引先</th><th>請求件数</th><th>売上合計</th><th>原価</th><th>粗利</th><th>入金済み</th><th>構成比</th></tr></thead>
             <tbody>
               {ranking.map((r, i) => (
                 <tr key={r.name}>
@@ -977,8 +1073,10 @@ function ReportsView({ data }) {
                   <td>{r.name}</td>
                   <td>{r.count}件</td>
                   <td className="amount">{yen(r.total)}</td>
+                  <td className="amount" style={{ color: "#c7d0d8" }}>{yen(r.cost)}</td>
+                  <td className="amount" style={{ color: (r.total - r.cost) >= 0 ? "#7fbf8a" : "#f2a0a0" }}>{yen(r.total - r.cost)}</td>
                   <td className="amount" style={{ color: r.paid >= r.total ? "#7fbf8a" : "#c7d0d8" }}>{yen(r.paid)}</td>
-                  <td style={{ width: 120 }}>
+                  <td style={{ width: 100 }}>
                     <div style={{ background: "#33383e", borderRadius: 3, overflow: "hidden", height: 8 }}>
                       <div style={{ width: `${(r.total / grandTotal) * 100}%`, background: "var(--steel-light)", height: "100%" }}></div>
                     </div>
@@ -1302,6 +1400,7 @@ function App() {
         siteName: sourceDoc.siteName || "",
         workOverview: sourceDoc.workOverview || "",
         items: sourceDoc.items.map(it => ({ ...it, id: uid() })),
+        costItems: (sourceDoc.costItems || []).map(c => ({ ...c, id: uid() })),
         taxRate: sourceDoc.taxRate,
         notes: sourceDoc.notes,
         linkedFrom: { docType: sourceDoc.docType, docId: sourceDoc.id, docNumber: sourceDoc.docNumber },
