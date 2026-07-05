@@ -136,6 +136,7 @@ function makeBlankDoc(docType) {
     docNumber: "",
     date: todayISO(),
     validUntil: "", desiredDelivery: "", dueDate: "",
+    title: "", siteName: "", workOverview: "",
     clientId: "",
     client: { name: "", honor: "御中", zip: "", address: "", tel: "", fax: "", contact: "" },
     items: [blankItemRow()],
@@ -412,7 +413,10 @@ function DocList({ docType, docs, onOpen, onNew, onDelete, data, onCreateFromSou
                 <tr key={d.id}>
                   <td className="doc-num" style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}>{d.docNumber}</td>
                   <td style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}>{fmtDate(d.date)}</td>
-                  <td style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}>{d.client?.name || "—"}</td>
+                  <td style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}>
+                    {d.client?.name || "—"}
+                    {d.title && <div style={{ fontSize: 11, color: "var(--line)", marginTop: 2 }}>{d.title}</div>}
+                  </td>
                   <td className="amount" style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}>{yen(calcTotals(d.items, d.taxRate).total)}</td>
                   <td style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}><StatusPill status={d.status} /></td>
                   {docType === "invoice" && (
@@ -453,6 +457,7 @@ function PaperPreview({ doc, company, printRef }) {
         <div>
           <div className="paper-title">{meta.label}</div>
           <div className="paper-docnum">{doc.docNumber}</div>
+          {doc.title && <div style={{ fontSize: 13, fontWeight: 700, marginTop: 6 }}>件名：{doc.title}</div>}
         </div>
         <div className="paper-company">
           <div className="name">{company.name}</div>
@@ -478,6 +483,13 @@ function PaperPreview({ doc, company, printRef }) {
           )}
         </div>
       </div>
+
+      {(doc.siteName || doc.workOverview) && (
+        <div style={{ border: "1px solid var(--line-faint)", borderRadius: 3, padding: "8px 12px", marginBottom: 16, fontSize: 12 }}>
+          {doc.siteName && <div><b>工事場所</b>　{doc.siteName}</div>}
+          {doc.workOverview && <div style={{ marginTop: doc.siteName ? 4 : 0, whiteSpace: "pre-wrap" }}><b>作業概要</b>　{doc.workOverview}</div>}
+        </div>
+      )}
 
       <p style={{ fontSize: 13, marginBottom: 16 }}>{meta.intro}</p>
 
@@ -559,6 +571,19 @@ function DocEditor({ doc, data, updateDoc, company, onBack, onCreateNext, onExpo
       <div className="editor-grid">
         <div className="panel">
           <h2>基本情報</h2>
+          <div className="field">
+            <label>件名</label>
+            <input value={doc.title || ""} onChange={(e) => patch({ title: e.target.value })} placeholder="例：〇〇ビル 空調更新工事" />
+          </div>
+          <div className="field">
+            <label>工事場所・現場</label>
+            <input value={doc.siteName || ""} onChange={(e) => patch({ siteName: e.target.value })} placeholder="例：〇〇県〇〇市〇〇 △△ビル3F" />
+          </div>
+          <div className="field">
+            <label>作業概要(大枠の作業内容)</label>
+            <textarea value={doc.workOverview || ""} onChange={(e) => patch({ workOverview: e.target.value })} placeholder="例：業務用エアコン4台の更新、既存機撤去・処分、試運転調整 一式" style={{ minHeight: 70 }}></textarea>
+          </div>
+          <div style={{ borderTop: "1px solid #3a4048", margin: "4px 0 14px" }}></div>
           <div className="field">
             <label>取引先（マスタから選択）</label>
             <select value={doc.clientId} onChange={(e) => selectClient(e.target.value)}>
@@ -1273,6 +1298,9 @@ function App() {
         docNumber: number,
         clientId: sourceDoc.clientId,
         client: { ...sourceDoc.client },
+        title: sourceDoc.title || "",
+        siteName: sourceDoc.siteName || "",
+        workOverview: sourceDoc.workOverview || "",
         items: sourceDoc.items.map(it => ({ ...it, id: uid() })),
         taxRate: sourceDoc.taxRate,
         notes: sourceDoc.notes,

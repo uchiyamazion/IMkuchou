@@ -200,6 +200,9 @@ function makeBlankDoc(docType) {
     validUntil: "",
     desiredDelivery: "",
     dueDate: "",
+    title: "",
+    siteName: "",
+    workOverview: "",
     clientId: "",
     client: {
       name: "",
@@ -620,7 +623,13 @@ function DocList({
       cursor: "pointer"
     },
     onClick: () => onOpen(d.id)
-  }, d.client?.name || "—"), /*#__PURE__*/React.createElement("td", {
+  }, d.client?.name || "—", d.title && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--line)",
+      marginTop: 2
+    }
+  }, d.title)), /*#__PURE__*/React.createElement("td", {
     className: "amount",
     style: {
       cursor: "pointer"
@@ -676,7 +685,13 @@ function PaperPreview({
     className: "paper-title"
   }, meta.label), /*#__PURE__*/React.createElement("div", {
     className: "paper-docnum"
-  }, doc.docNumber)), /*#__PURE__*/React.createElement("div", {
+  }, doc.docNumber), doc.title && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      marginTop: 6
+    }
+  }, "件名：", doc.title)), /*#__PURE__*/React.createElement("div", {
     className: "paper-company"
   }, /*#__PURE__*/React.createElement("div", {
     className: "name"
@@ -688,7 +703,20 @@ function PaperPreview({
     className: "client-name"
   }, doc.client.name || "（取引先未設定）", " ", doc.client.honor), doc.client.zip && /*#__PURE__*/React.createElement("div", null, "〒", doc.client.zip), doc.client.address && /*#__PURE__*/React.createElement("div", null, doc.client.address), doc.client.tel && /*#__PURE__*/React.createElement("div", null, "TEL ", doc.client.tel), doc.client.contact && /*#__PURE__*/React.createElement("div", null, "ご担当 ", doc.client.contact, " 様")), /*#__PURE__*/React.createElement("div", {
     className: "paper-date"
-  }, /*#__PURE__*/React.createElement("div", null, "発行日\u3000", fmtDate(doc.date)), meta.extraDate && doc[meta.extraDate.key] && /*#__PURE__*/React.createElement("div", null, meta.extraDate.label, "\u3000", fmtDate(doc[meta.extraDate.key])))), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("div", null, "発行日\u3000", fmtDate(doc.date)), meta.extraDate && doc[meta.extraDate.key] && /*#__PURE__*/React.createElement("div", null, meta.extraDate.label, "\u3000", fmtDate(doc[meta.extraDate.key])))), (doc.siteName || doc.workOverview) && /*#__PURE__*/React.createElement("div", {
+    style: {
+      border: "1px solid var(--line-faint)",
+      borderRadius: 3,
+      padding: "8px 12px",
+      marginBottom: 16,
+      fontSize: 12
+    }
+  }, doc.siteName && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, "工事場所"), "\u3000", doc.siteName), doc.workOverview && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: doc.siteName ? 4 : 0,
+      whiteSpace: "pre-wrap"
+    }
+  }, /*#__PURE__*/React.createElement("b", null, "作業概要"), "\u3000", doc.workOverview)), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13,
       marginBottom: 16
@@ -812,6 +840,38 @@ function DocEditor({
   }, /*#__PURE__*/React.createElement("div", {
     className: "panel"
   }, /*#__PURE__*/React.createElement("h2", null, "基本情報"), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "件名"), /*#__PURE__*/React.createElement("input", {
+    value: doc.title || "",
+    onChange: e => patch({
+      title: e.target.value
+    }),
+    placeholder: "例：〇〇ビル 空調更新工事"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "工事場所・現場"), /*#__PURE__*/React.createElement("input", {
+    value: doc.siteName || "",
+    onChange: e => patch({
+      siteName: e.target.value
+    }),
+    placeholder: "例：〇〇県〇〇市〇〇 △△ビル3F"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "作業概要(大枠の作業内容)"), /*#__PURE__*/React.createElement("textarea", {
+    value: doc.workOverview || "",
+    onChange: e => patch({
+      workOverview: e.target.value
+    }),
+    placeholder: "例：業務用エアコン4台の更新、既存機撤去・処分、試運転調整 一式",
+    style: {
+      minHeight: 70
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderTop: "1px solid #3a4048",
+      margin: "4px 0 14px"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
     className: "field"
   }, /*#__PURE__*/React.createElement("label", null, "取引先（マスタから選択）"), /*#__PURE__*/React.createElement("select", {
     value: doc.clientId,
@@ -1977,6 +2037,9 @@ function App() {
         client: {
           ...sourceDoc.client
         },
+        title: sourceDoc.title || "",
+        siteName: sourceDoc.siteName || "",
+        workOverview: sourceDoc.workOverview || "",
         items: sourceDoc.items.map(it => ({
           ...it,
           id: uid()
