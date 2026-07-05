@@ -281,8 +281,47 @@ function Dashboard({ data, setActiveTab, openNewDoc }) {
 /* 書類一覧                                                               */
 /* ---------------------------------------------------------------------- */
 
-function DocList({ docType, docs, onOpen, onNew, onDelete }) {
+function SourceDocModal({ data, targetType, onPick, onClose }) {
   const [query, setQuery] = useState("");
+  const candidates = DOC_ORDER
+    .filter(t => t !== targetType)
+    .flatMap(t => data.docs[t].map(d => ({ ...d, docType: t })))
+    .filter(d => !query || d.docNumber.includes(query) || (d.client?.name || "").includes(query))
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+
+  return (
+    <Modal title={`${DOC_META[targetType].label}を他の書類から作成`} onClose={onClose}>
+      <div className="field">
+        <label>コピー元を選択(取引先・明細・備考を引き継ぎます)</label>
+        <input
+          autoFocus
+          placeholder="書類番号・取引先名で検索"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+      <div className="mini-list" style={{ maxHeight: 320, overflowY: "auto" }}>
+        {candidates.length === 0 && <div className="empty-state"><p>コピー元になる書類が見つかりません。</p></div>}
+        {candidates.map(d => (
+          <div className="mini-item" key={`${d.docType}-${d.id}`} style={{ cursor: "pointer" }} onClick={() => onPick(d)}>
+            <div>
+              <div className="mi-name">{DOC_META[d.docType].label} <span className="doc-num">{d.docNumber}</span></div>
+              <div className="mi-sub">{d.client?.name || "取引先未設定"} ／ {fmtDate(d.date)} ／ {yen(calcTotals(d.items, d.taxRate).total)}</div>
+            </div>
+            <button className="btn btn-primary btn-sm">この内容で作成</button>
+          </div>
+        ))}
+      </div>
+      <div className="modal-actions">
+        <button className="btn btn-ghost" onClick={onClose}>キャンセル</button>
+      </div>
+    </Modal>
+  );
+}
+
+function DocList({ docType, docs, onOpen, onNew, onDelete, data, onCreateFromSource }) {
+  const [query, setQuery] = useState("");
+  const [showSourcePicker, setShowSourcePicker] = useState(false);
   const filtered = docs.filter(d =>
     !query || d.docNumber.includes(query) || (d.client?.name || "").includes(query)
   ).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -296,6 +335,7 @@ function DocList({ docType, docs, onOpen, onNew, onDelete }) {
           onChange={(e) => setQuery(e.target.value)}
           style={{ flex: "1 1 240px", background: "#1d2126", border: "1px solid #454b53", color: "#e4e8ec", padding: "8px 12px", borderRadius: 3 }}
         />
+        <button className="btn btn-ghost" onClick={() => setShowSourcePicker(true)}>他の書類から作成</button>
         <button className="btn btn-primary" onClick={onNew}>+ 新規{DOC_META[docType].label}</button>
       </div>
       <div className="doc-table-wrap">
@@ -303,7 +343,7 @@ function DocList({ docType, docs, onOpen, onNew, onDelete }) {
           <div className="empty-state">
             <div className="icon">📁</div>
             <p>{DOC_META[docType].label}がまだありません。</p>
-            <p>「+ 新規{DOC_META[docType].label}」から作成してください。</p>
+            <p>「+ 新規{DOC_META[docType].label}」、または「他の書類から作成」をお試しください。</p>
           </div>
         ) : (
           <table className="doc-table">
@@ -325,6 +365,14 @@ function DocList({ docType, docs, onOpen, onNew, onDelete }) {
           </table>
         )}
       </div>
+      {showSourcePicker && (
+        <SourceDocModal
+          data={data}
+          targetType={docType}
+          onClose={() => setShowSourcePicker(false)}
+          onPick={(sourceDoc) => { setShowSourcePicker(false); onCreateFromSource(sourceDoc, docType); }}
+        />
+      )}
     </div>
   );
 }
@@ -877,9 +925,11 @@ function App() {
         <DocList
           docType={activeTab}
           docs={docs}
+          data={data}
           onOpen={(id) => setActiveTab(activeTab, id)}
           onNew={() => createAndOpen(activeTab)}
           onDelete={(id) => deleteDoc(activeTab, id)}
+          onCreateFromSource={handleCreateNext}
         />
       );
     }

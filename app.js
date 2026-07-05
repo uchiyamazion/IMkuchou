@@ -405,14 +405,68 @@ function Dashboard({
 /* 書類一覧                                                               */
 /* ---------------------------------------------------------------------- */
 
+function SourceDocModal({
+  data,
+  targetType,
+  onPick,
+  onClose
+}) {
+  const [query, setQuery] = useState("");
+  const candidates = DOC_ORDER.filter(t => t !== targetType).flatMap(t => data.docs[t].map(d => ({
+    ...d,
+    docType: t
+  }))).filter(d => !query || d.docNumber.includes(query) || (d.client?.name || "").includes(query)).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  return /*#__PURE__*/React.createElement(Modal, {
+    title: `${DOC_META[targetType].label}を他の書類から作成`,
+    onClose: onClose
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "コピー元を選択(取引先・明細・備考を引き継ぎます)"), /*#__PURE__*/React.createElement("input", {
+    autoFocus: true,
+    placeholder: "書類番号・取引先名で検索",
+    value: query,
+    onChange: e => setQuery(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "mini-list",
+    style: {
+      maxHeight: 320,
+      overflowY: "auto"
+    }
+  }, candidates.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "empty-state"
+  }, /*#__PURE__*/React.createElement("p", null, "コピー元になる書類が見つかりません。")), candidates.map(d => /*#__PURE__*/React.createElement("div", {
+    className: "mini-item",
+    key: `${d.docType}-${d.id}`,
+    style: {
+      cursor: "pointer"
+    },
+    onClick: () => onPick(d)
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "mi-name"
+  }, DOC_META[d.docType].label, " ", /*#__PURE__*/React.createElement("span", {
+    className: "doc-num"
+  }, d.docNumber)), /*#__PURE__*/React.createElement("div", {
+    className: "mi-sub"
+  }, d.client?.name || "取引先未設定", " ／ ", fmtDate(d.date), " ／ ", yen(calcTotals(d.items, d.taxRate).total))), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary btn-sm"
+  }, "この内容で作成")))), /*#__PURE__*/React.createElement("div", {
+    className: "modal-actions"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-ghost",
+    onClick: onClose
+  }, "キャンセル")));
+}
 function DocList({
   docType,
   docs,
   onOpen,
   onNew,
-  onDelete
+  onDelete,
+  data,
+  onCreateFromSource
 }) {
   const [query, setQuery] = useState("");
+  const [showSourcePicker, setShowSourcePicker] = useState(false);
   const filtered = docs.filter(d => !query || d.docNumber.includes(query) || (d.client?.name || "").includes(query)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -434,6 +488,9 @@ function DocList({
       borderRadius: 3
     }
   }), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-ghost",
+    onClick: () => setShowSourcePicker(true)
+  }, "他の書類から作成"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
     onClick: onNew
   }, "+ 新規", DOC_META[docType].label)), /*#__PURE__*/React.createElement("div", {
@@ -442,7 +499,7 @@ function DocList({
     className: "empty-state"
   }, /*#__PURE__*/React.createElement("div", {
     className: "icon"
-  }, "📁"), /*#__PURE__*/React.createElement("p", null, DOC_META[docType].label, "がまだありません。"), /*#__PURE__*/React.createElement("p", null, "「+ 新規", DOC_META[docType].label, "」から作成してください。")) : /*#__PURE__*/React.createElement("table", {
+  }, "📁"), /*#__PURE__*/React.createElement("p", null, DOC_META[docType].label, "がまだありません。"), /*#__PURE__*/React.createElement("p", null, "「+ 新規", DOC_META[docType].label, "」、または「他の書類から作成」をお試しください。")) : /*#__PURE__*/React.createElement("table", {
     className: "doc-table"
   }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "番号"), /*#__PURE__*/React.createElement("th", null, "日付"), /*#__PURE__*/React.createElement("th", null, "取引先"), /*#__PURE__*/React.createElement("th", null, "金額"), /*#__PURE__*/React.createElement("th", null, "状態"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, filtered.map(d => /*#__PURE__*/React.createElement("tr", {
     key: d.id
@@ -478,7 +535,15 @@ function DocList({
   })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-sm",
     onClick: () => onDelete(d.id)
-  }, "削除"))))))));
+  }, "削除"))))))), showSourcePicker && /*#__PURE__*/React.createElement(SourceDocModal, {
+    data: data,
+    targetType: docType,
+    onClose: () => setShowSourcePicker(false),
+    onPick: sourceDoc => {
+      setShowSourcePicker(false);
+      onCreateFromSource(sourceDoc, docType);
+    }
+  }));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1469,9 +1534,11 @@ function App() {
       body = /*#__PURE__*/React.createElement(DocList, {
         docType: activeTab,
         docs: docs,
+        data: data,
         onOpen: id => setActiveTab(activeTab, id),
         onNew: () => createAndOpen(activeTab),
-        onDelete: id => deleteDoc(activeTab, id)
+        onDelete: id => deleteDoc(activeTab, id),
+        onCreateFromSource: handleCreateNext
       });
     }
   }
