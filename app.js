@@ -214,6 +214,10 @@ function makeBlankDoc(docType) {
     taxRate: 10,
     notes: "",
     status: "draft",
+    paymentStatus: "unpaid",
+    // 請求書のみ使用: unpaid / partial / paid
+    paidAmount: 0,
+    paidDate: "",
     linkedFrom: null,
     linkedTo: [],
     createdAt: new Date().toISOString(),
@@ -259,6 +263,28 @@ function StatusPill({
     done: ["完了", "status-done"]
   };
   const [label, cls] = map[status] || map.draft;
+  return /*#__PURE__*/React.createElement("span", {
+    className: `status-pill ${cls}`
+  }, label);
+}
+function PaymentPill({
+  doc
+}) {
+  const ps = doc.paymentStatus || "unpaid";
+  const overdue = doc.dueDate && ps !== "paid" && doc.dueDate < todayISO();
+  if (overdue) return /*#__PURE__*/React.createElement("span", {
+    className: "status-pill",
+    style: {
+      background: "#3a1414",
+      color: "#f2a0a0"
+    }
+  }, "期限超過");
+  const map = {
+    unpaid: ["未入金", "status-draft"],
+    partial: ["一部入金", "status-sent"],
+    paid: ["入金済み", "status-done"]
+  };
+  const [label, cls] = map[ps] || map.unpaid;
   return /*#__PURE__*/React.createElement("span", {
     className: `status-pill ${cls}`
   }, label);
@@ -322,7 +348,68 @@ function Dashboard({
     ...d,
     docType: key
   }))).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")).slice(0, 8);
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  const invoices = data.docs.invoice || [];
+  const today = todayISO();
+  const unpaidInvoices = invoices.filter(d => (d.paymentStatus || "unpaid") !== "paid");
+  const overdueInvoices = unpaidInvoices.filter(d => d.dueDate && d.dueDate < today);
+  const outstandingTotal = unpaidInvoices.reduce((sum, d) => {
+    const total = calcTotals(d.items, d.taxRate).total;
+    const paid = Number(d.paidAmount) || 0;
+    return sum + Math.max(total - paid, 0);
+  }, 0);
+  return /*#__PURE__*/React.createElement("div", null, invoices.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "doc-table-wrap",
+    style: {
+      marginBottom: 20,
+      padding: 16,
+      borderColor: overdueInvoices.length ? "var(--danger)" : undefined,
+      cursor: "pointer"
+    },
+    onClick: () => setActiveTab("invoice")
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      flexWrap: "wrap",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, "未回収金額(合計)"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 26,
+      fontWeight: 700,
+      color: "#e4e8ec"
+    }
+  }, yen(outstandingTotal))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, "未入金の請求書"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 26,
+      fontWeight: 700,
+      color: "#e4e8ec"
+    }
+  }, unpaidInvoices.length, "件")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)"
+    }
+  }, "支払期限超過"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      fontSize: 26,
+      fontWeight: 700,
+      color: overdueInvoices.length ? "#f2a0a0" : "#e4e8ec"
+    }
+  }, overdueInvoices.length, "件")))), /*#__PURE__*/React.createElement("div", {
     className: "doc-table-wrap",
     style: {
       marginBottom: 20,
@@ -501,7 +588,7 @@ function DocList({
     className: "icon"
   }, "📁"), /*#__PURE__*/React.createElement("p", null, DOC_META[docType].label, "がまだありません。"), /*#__PURE__*/React.createElement("p", null, "「+ 新規", DOC_META[docType].label, "」、または「他の書類から作成」をお試しください。")) : /*#__PURE__*/React.createElement("table", {
     className: "doc-table"
-  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "番号"), /*#__PURE__*/React.createElement("th", null, "日付"), /*#__PURE__*/React.createElement("th", null, "取引先"), /*#__PURE__*/React.createElement("th", null, "金額"), /*#__PURE__*/React.createElement("th", null, "状態"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, filtered.map(d => /*#__PURE__*/React.createElement("tr", {
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "番号"), /*#__PURE__*/React.createElement("th", null, "日付"), /*#__PURE__*/React.createElement("th", null, "取引先"), /*#__PURE__*/React.createElement("th", null, "金額"), /*#__PURE__*/React.createElement("th", null, "状態"), docType === "invoice" && /*#__PURE__*/React.createElement("th", null, "入金"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, filtered.map(d => /*#__PURE__*/React.createElement("tr", {
     key: d.id
   }, /*#__PURE__*/React.createElement("td", {
     className: "doc-num",
@@ -532,6 +619,13 @@ function DocList({
     onClick: () => onOpen(d.id)
   }, /*#__PURE__*/React.createElement(StatusPill, {
     status: d.status
+  })), docType === "invoice" && /*#__PURE__*/React.createElement("td", {
+    style: {
+      cursor: "pointer"
+    },
+    onClick: () => onOpen(d.id)
+  }, /*#__PURE__*/React.createElement(PaymentPill, {
+    doc: d
   })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-sm",
     onClick: () => onDelete(d.id)
@@ -792,7 +886,59 @@ function DocEditor({
     value: "sent"
   }, "送付済"), /*#__PURE__*/React.createElement("option", {
     value: "done"
-  }, "完了"))), /*#__PURE__*/React.createElement("div", {
+  }, "完了"))), doc.docType === "invoice" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "#1d2126",
+      border: "1px solid #454b53",
+      borderRadius: 4,
+      padding: 12,
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--line)",
+      marginBottom: 8,
+      fontWeight: 700
+    }
+  }, "入金管理"), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "入金状況"), /*#__PURE__*/React.createElement("select", {
+    value: doc.paymentStatus || "unpaid",
+    onChange: e => patch({
+      paymentStatus: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "unpaid"
+  }, "未入金"), /*#__PURE__*/React.createElement("option", {
+    value: "partial"
+  }, "一部入金"), /*#__PURE__*/React.createElement("option", {
+    value: "paid"
+  }, "入金済み"))), (doc.paymentStatus === "partial" || doc.paymentStatus === "paid") && /*#__PURE__*/React.createElement("div", {
+    className: "field-row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "入金額"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: doc.paidAmount || 0,
+    onChange: e => patch({
+      paidAmount: Number(e.target.value)
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "入金日"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: doc.paidDate || "",
+    onChange: e => patch({
+      paidDate: e.target.value
+    })
+  }))), doc.dueDate && doc.paymentStatus !== "paid" && doc.dueDate < todayISO() && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "var(--danger)",
+      fontSize: 12,
+      fontWeight: 700
+    }
+  }, "⚠ 支払期限(", fmtDate(doc.dueDate), ")を超過しています")), /*#__PURE__*/React.createElement("div", {
     className: "field"
   }, /*#__PURE__*/React.createElement("label", null, "消費税率（%）"), /*#__PURE__*/React.createElement("input", {
     type: "number",
@@ -1224,6 +1370,7 @@ function SettingsView({
   showToast
 }) {
   const [f, setF] = useState(data.company);
+  const fileInputRef = useRef(null);
   useEffect(() => setF(data.company), [data.company]);
   function save() {
     setData(d => ({
@@ -1232,11 +1379,101 @@ function SettingsView({
     }));
     showToast("自社情報を保存しました");
   }
+  function exportBackup() {
+    const payload = {
+      ...data,
+      exportedAt: new Date().toISOString(),
+      appVersion: "IMkuchou-1"
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = todayISO().replace(/-/g, "");
+    a.href = url;
+    a.download = `imkuchou_backup_${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("バックアップをダウンロードしました");
+  }
+  function triggerImport() {
+    fileInputRef.current?.click();
+  }
+  function handleImportFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed || typeof parsed !== "object" || !parsed.docs) {
+          alert("バックアップファイルの形式が正しくありません。");
+          return;
+        }
+        if (!confirm("現在のデータを、選択したバックアップファイルの内容で上書きします。よろしいですか？\n(念のため、上書き前に現在の状態もエクスポートしておくことをおすすめします)")) return;
+        const base = defaultData();
+        setData({
+          company: {
+            ...base.company,
+            ...(parsed.company || {})
+          },
+          clients: parsed.clients || [],
+          items: parsed.items || [],
+          docs: {
+            ...base.docs,
+            ...(parsed.docs || {})
+          },
+          counters: parsed.counters || {}
+        });
+        showToast("バックアップを読み込みました");
+      } catch (err) {
+        alert("ファイルの読み込みに失敗しました。JSON形式のバックアップファイルを選択してください。");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
   return /*#__PURE__*/React.createElement("div", {
-    className: "panel",
     style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 20,
       maxWidth: 560
     }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "panel"
+  }, /*#__PURE__*/React.createElement("h2", null, "データのバックアップ"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12.5,
+      color: "var(--line)",
+      marginTop: 0,
+      lineHeight: 1.7
+    }
+  }, "すべてのデータはこの端末のブラウザ内(localStorage)にのみ保存されています。 ブラウザのデータ削除・端末の故障・機種変更でデータが失われる可能性があるため、 定期的にバックアップのダウンロードをおすすめします。"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    onClick: exportBackup
+  }, "バックアップをダウンロード(JSON)"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-ghost",
+    onClick: triggerImport
+  }, "バックアップから復元"), /*#__PURE__*/React.createElement("input", {
+    ref: fileInputRef,
+    type: "file",
+    accept: "application/json",
+    style: {
+      display: "none"
+    },
+    onChange: handleImportFile
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "panel"
   }, /*#__PURE__*/React.createElement("h2", null, "自社情報"), /*#__PURE__*/React.createElement("div", {
     className: "field"
   }, /*#__PURE__*/React.createElement("label", null, "会社名"), /*#__PURE__*/React.createElement("input", {
@@ -1343,7 +1580,7 @@ function SettingsView({
   })), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
     onClick: save
-  }, "保存する"));
+  }, "保存する")));
 }
 
 /* ---------------------------------------------------------------------- */

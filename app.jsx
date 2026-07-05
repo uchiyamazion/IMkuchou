@@ -142,6 +142,9 @@ function makeBlankDoc(docType) {
     taxRate: 10,
     notes: "",
     status: "draft",
+    paymentStatus: "unpaid", // 請求書のみ使用: unpaid / partial / paid
+    paidAmount: 0,
+    paidDate: "",
     linkedFrom: null,
     linkedTo: [],
     createdAt: new Date().toISOString(),
@@ -172,6 +175,15 @@ function Modal({ title, onClose, children }) {
 function StatusPill({ status }) {
   const map = { draft: ["下書き", "status-draft"], sent: ["送付済", "status-sent"], done: ["完了", "status-done"] };
   const [label, cls] = map[status] || map.draft;
+  return <span className={`status-pill ${cls}`}>{label}</span>;
+}
+
+function PaymentPill({ doc }) {
+  const ps = doc.paymentStatus || "unpaid";
+  const overdue = doc.dueDate && ps !== "paid" && doc.dueDate < todayISO();
+  if (overdue) return <span className="status-pill" style={{ background: "#3a1414", color: "#f2a0a0" }}>期限超過</span>;
+  const map = { unpaid: ["未入金", "status-draft"], partial: ["一部入金", "status-sent"], paid: ["入金済み", "status-done"] };
+  const [label, cls] = map[ps] || map.unpaid;
   return <span className={`status-pill ${cls}`}>{label}</span>;
 }
 
@@ -228,8 +240,41 @@ function Dashboard({ data, setActiveTab, openNewDoc }) {
     .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
     .slice(0, 8);
 
+  const invoices = data.docs.invoice || [];
+  const today = todayISO();
+  const unpaidInvoices = invoices.filter(d => (d.paymentStatus || "unpaid") !== "paid");
+  const overdueInvoices = unpaidInvoices.filter(d => d.dueDate && d.dueDate < today);
+  const outstandingTotal = unpaidInvoices.reduce((sum, d) => {
+    const total = calcTotals(d.items, d.taxRate).total;
+    const paid = Number(d.paidAmount) || 0;
+    return sum + Math.max(total - paid, 0);
+  }, 0);
+
   return (
     <div>
+      {invoices.length > 0 && (
+        <div
+          className="doc-table-wrap"
+          style={{ marginBottom: 20, padding: 16, borderColor: overdueInvoices.length ? "var(--danger)" : undefined, cursor: "pointer" }}
+          onClick={() => setActiveTab("invoice")}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--line)" }}>未回収金額(合計)</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 26, fontWeight: 700, color: "#e4e8ec" }}>{yen(outstandingTotal)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--line)" }}>未入金の請求書</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 26, fontWeight: 700, color: "#e4e8ec" }}>{unpaidInvoices.length}件</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--line)" }}>支払期限超過</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 26, fontWeight: 700, color: overdueInvoices.length ? "#f2a0a0" : "#e4e8ec" }}>{overdueInvoices.length}件</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="doc-table-wrap" style={{ marginBottom: 20, padding: 16 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
           {counts.map(c => (
@@ -347,7 +392,7 @@ function DocList({ docType, docs, onOpen, onNew, onDelete, data, onCreateFromSou
           </div>
         ) : (
           <table className="doc-table">
-            <thead><tr><th>番号</th><th>日付</th><th>取引先</th><th>金額</th><th>状態</th><th></th></tr></thead>
+            <thead><tr><th>番号</th><th>日付</th><th>取引先</th><th>金額</th><th>状態</th>{docType === "invoice" && <th>入金</th>}<th></th></tr></thead>
             <tbody>
               {filtered.map(d => (
                 <tr key={d.id}>
@@ -356,6 +401,9 @@ function DocList({ docType, docs, onOpen, onNew, onDelete, data, onCreateFromSou
                   <td style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}>{d.client?.name || "—"}</td>
                   <td className="amount" style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}>{yen(calcTotals(d.items, d.taxRate).total)}</td>
                   <td style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}><StatusPill status={d.status} /></td>
+                  {docType === "invoice" && (
+                    <td style={{ cursor: "pointer" }} onClick={() => onOpen(d.id)}><PaymentPill doc={d} /></td>
+                  )}
                   <td>
                     <button className="btn btn-ghost btn-sm" onClick={() => onDelete(d.id)}>削除</button>
                   </td>
@@ -553,6 +601,35 @@ function DocEditor({ doc, data, updateDoc, company, onBack, onCreateNext, onExpo
               <option value="done">完了</option>
             </select>
           </div>
+
+          {doc.docType === "invoice" && (
+            <div style={{ background: "#1d2126", border: "1px solid #454b53", borderRadius: 4, padding: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: "var(--line)", marginBottom: 8, fontWeight: 700 }}>入金管理</div>
+              <div className="field">
+                <label>入金状況</label>
+                <select value={doc.paymentStatus || "unpaid"} onChange={(e) => patch({ paymentStatus: e.target.value })}>
+                  <option value="unpaid">未入金</option>
+                  <option value="partial">一部入金</option>
+                  <option value="paid">入金済み</option>
+                </select>
+              </div>
+              {(doc.paymentStatus === "partial" || doc.paymentStatus === "paid") && (
+                <div className="field-row">
+                  <div className="field">
+                    <label>入金額</label>
+                    <input type="number" value={doc.paidAmount || 0} onChange={(e) => patch({ paidAmount: Number(e.target.value) })} />
+                  </div>
+                  <div className="field">
+                    <label>入金日</label>
+                    <input type="date" value={doc.paidDate || ""} onChange={(e) => patch({ paidDate: e.target.value })} />
+                  </div>
+                </div>
+              )}
+              {doc.dueDate && doc.paymentStatus !== "paid" && doc.dueDate < todayISO() && (
+                <div style={{ color: "var(--danger)", fontSize: 12, fontWeight: 700 }}>⚠ 支払期限({fmtDate(doc.dueDate)})を超過しています</div>
+              )}
+            </div>
+          )}
 
           <div className="field">
             <label>消費税率（%）</label>
@@ -760,6 +837,7 @@ function ItemModal({ editing, onSave, onClose }) {
 
 function SettingsView({ data, setData, showToast }) {
   const [f, setF] = useState(data.company);
+  const fileInputRef = useRef(null);
   useEffect(() => setF(data.company), [data.company]);
 
   function save() {
@@ -767,35 +845,100 @@ function SettingsView({ data, setData, showToast }) {
     showToast("自社情報を保存しました");
   }
 
+  function exportBackup() {
+    const payload = { ...data, exportedAt: new Date().toISOString(), appVersion: "IMkuchou-1" };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = todayISO().replace(/-/g, "");
+    a.href = url;
+    a.download = `imkuchou_backup_${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("バックアップをダウンロードしました");
+  }
+
+  function triggerImport() {
+    fileInputRef.current?.click();
+  }
+
+  function handleImportFile(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!parsed || typeof parsed !== "object" || !parsed.docs) {
+          alert("バックアップファイルの形式が正しくありません。");
+          return;
+        }
+        if (!confirm("現在のデータを、選択したバックアップファイルの内容で上書きします。よろしいですか？\n(念のため、上書き前に現在の状態もエクスポートしておくことをおすすめします)")) return;
+        const base = defaultData();
+        setData({
+          company: { ...base.company, ...(parsed.company || {}) },
+          clients: parsed.clients || [],
+          items: parsed.items || [],
+          docs: { ...base.docs, ...(parsed.docs || {}) },
+          counters: parsed.counters || {},
+        });
+        showToast("バックアップを読み込みました");
+      } catch (err) {
+        alert("ファイルの読み込みに失敗しました。JSON形式のバックアップファイルを選択してください。");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }
+
   return (
-    <div className="panel" style={{ maxWidth: 560 }}>
-      <h2>自社情報</h2>
-      <div className="field"><label>会社名</label><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
-      <div className="field"><label>郵便番号</label><input value={f.zip} onChange={(e) => setF({ ...f, zip: e.target.value })} /></div>
-      <div className="field"><label>住所</label><input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></div>
-      <div className="field-row">
-        <div className="field"><label>TEL</label><input value={f.tel} onChange={(e) => setF({ ...f, tel: e.target.value })} /></div>
-        <div className="field"><label>FAX</label><input value={f.fax} onChange={(e) => setF({ ...f, fax: e.target.value })} /></div>
-      </div>
-      <div className="field"><label>インボイス登録番号（請求書に表示）</label><input value={f.invoiceRegNo} onChange={(e) => setF({ ...f, invoiceRegNo: e.target.value })} placeholder="T1234567890123" /></div>
-
-      <h2 style={{ marginTop: 20 }}>振込先情報</h2>
-      <div className="field-row">
-        <div className="field"><label>銀行名</label><input value={f.bankName} onChange={(e) => setF({ ...f, bankName: e.target.value })} /></div>
-        <div className="field"><label>支店名</label><input value={f.bankBranch} onChange={(e) => setF({ ...f, bankBranch: e.target.value })} /></div>
-      </div>
-      <div className="field-row">
-        <div className="field"><label>口座種別</label>
-          <select value={f.bankType} onChange={(e) => setF({ ...f, bankType: e.target.value })}>
-            <option value="普通">普通</option><option value="当座">当座</option>
-          </select>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 560 }}>
+      <div className="panel">
+        <h2>データのバックアップ</h2>
+        <p style={{ fontSize: 12.5, color: "var(--line)", marginTop: 0, lineHeight: 1.7 }}>
+          すべてのデータはこの端末のブラウザ内(localStorage)にのみ保存されています。
+          ブラウザのデータ削除・端末の故障・機種変更でデータが失われる可能性があるため、
+          定期的にバックアップのダウンロードをおすすめします。
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn btn-primary" onClick={exportBackup}>バックアップをダウンロード(JSON)</button>
+          <button className="btn btn-ghost" onClick={triggerImport}>バックアップから復元</button>
+          <input ref={fileInputRef} type="file" accept="application/json" style={{ display: "none" }} onChange={handleImportFile} />
         </div>
-        <div className="field"><label>口座番号</label><input value={f.bankNumber} onChange={(e) => setF({ ...f, bankNumber: e.target.value })} /></div>
       </div>
-      <div className="field"><label>口座名義</label><input value={f.bankHolder} onChange={(e) => setF({ ...f, bankHolder: e.target.value })} /></div>
 
-      <button className="btn btn-primary" onClick={save}>保存する</button>
+      <div className="panel">
+        <h2>自社情報</h2>
+        <div className="field"><label>会社名</label><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
+        <div className="field"><label>郵便番号</label><input value={f.zip} onChange={(e) => setF({ ...f, zip: e.target.value })} /></div>
+        <div className="field"><label>住所</label><input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></div>
+        <div className="field-row">
+          <div className="field"><label>TEL</label><input value={f.tel} onChange={(e) => setF({ ...f, tel: e.target.value })} /></div>
+          <div className="field"><label>FAX</label><input value={f.fax} onChange={(e) => setF({ ...f, fax: e.target.value })} /></div>
+        </div>
+        <div className="field"><label>インボイス登録番号（請求書に表示）</label><input value={f.invoiceRegNo} onChange={(e) => setF({ ...f, invoiceRegNo: e.target.value })} placeholder="T1234567890123" /></div>
+
+        <h2 style={{ marginTop: 20 }}>振込先情報</h2>
+        <div className="field-row">
+          <div className="field"><label>銀行名</label><input value={f.bankName} onChange={(e) => setF({ ...f, bankName: e.target.value })} /></div>
+          <div className="field"><label>支店名</label><input value={f.bankBranch} onChange={(e) => setF({ ...f, bankBranch: e.target.value })} /></div>
+        </div>
+        <div className="field-row">
+          <div className="field"><label>口座種別</label>
+            <select value={f.bankType} onChange={(e) => setF({ ...f, bankType: e.target.value })}>
+              <option value="普通">普通</option><option value="当座">当座</option>
+            </select>
+          </div>
+          <div className="field"><label>口座番号</label><input value={f.bankNumber} onChange={(e) => setF({ ...f, bankNumber: e.target.value })} /></div>
+        </div>
+        <div className="field"><label>口座名義</label><input value={f.bankHolder} onChange={(e) => setF({ ...f, bankHolder: e.target.value })} /></div>
+
+        <button className="btn btn-primary" onClick={save}>保存する</button>
+      </div>
     </div>
+
   );
 }
 
