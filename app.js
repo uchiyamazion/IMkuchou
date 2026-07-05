@@ -2107,7 +2107,10 @@ function App() {
     className: "topbar"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", null, pageTitle), /*#__PURE__*/React.createElement("div", {
     className: "sub"
-  }, pageSub))), /*#__PURE__*/React.createElement("div", {
+  }, pageSub)), activeTab !== "dashboard" && /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-ghost btn-sm",
+    onClick: () => setActiveTab("dashboard")
+  }, "🏠 ホーム")), /*#__PURE__*/React.createElement("div", {
     className: "content-scroll"
   }, body)), /*#__PURE__*/React.createElement(Toast, {
     message: toast

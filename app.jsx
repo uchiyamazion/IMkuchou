@@ -1362,6 +1362,11 @@ function App() {
             <h1>{pageTitle}</h1>
             <div className="sub">{pageSub}</div>
           </div>
+          {activeTab !== "dashboard" && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setActiveTab("dashboard")}>
+              🏠 ホーム
+            </button>
+          )}
         </div>
         <div className="content-scroll">{body}</div>
       </div>

@@ -732,7 +732,15 @@ table.item-table {
 
 @media (max-width: 640px) {
   .binder { width: 60px; padding-left: 4px; }
-  .binder-brand { display: none; }
+  .binder-brand {
+    writing-mode: horizontal-tb;
+    font-size: 0;
+    text-align: center;
+    padding: 8px 0 12px;
+    margin-left: 0;
+    border-bottom: 1px solid #3a4048;
+  }
+  .binder-brand::before { content: '🏠'; font-size: 20px; }
   .tab { font-size: 11px; min-height: 76px; padding: 8px 4px 8px 8px; }
   .topbar { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
   .content-scroll { padding: 14px 12px 60px; }
