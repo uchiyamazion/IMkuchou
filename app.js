@@ -216,6 +216,17 @@ function blankCostRow() {
     amount: 0
   };
 }
+function isDocBlank(doc) {
+  if (!doc) return false;
+  const noText = v => !v || !String(v).trim();
+  if (!noText(doc.title) || !noText(doc.siteName) || !noText(doc.workOverview) || !noText(doc.notes)) return false;
+  if (!noText(doc.client?.name)) return false;
+  const itemsBlank = (doc.items || []).every(it => noText(it.name) && (!Number(it.unitPrice) || Number(it.unitPrice) === 0));
+  if (!itemsBlank) return false;
+  const costsBlank = (doc.costItems || []).every(c => noText(c.name) && (!Number(c.amount) || Number(c.amount) === 0));
+  if (!costsBlank) return false;
+  return true;
+}
 function makeBlankDoc(docType) {
   return {
     id: uid(),
@@ -593,11 +604,13 @@ function DocList({
   onNew,
   onDelete,
   data,
-  onCreateFromSource
+  onCreateFromSource,
+  onCleanupBlanks
 }) {
   const [query, setQuery] = useState("");
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const filtered = docs.filter(d => !query || d.docNumber.includes(query) || (d.client?.name || "").includes(query)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const blankCount = docs.filter(isDocBlank).length;
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -623,7 +636,20 @@ function DocList({
   }, "他の書類から作成"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
     onClick: onNew
-  }, "+ 新規", DOC_META[docType].label)), /*#__PURE__*/React.createElement("div", {
+  }, "+ 新規", DOC_META[docType].label)), blankCount > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "note",
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 14,
+      marginTop: 0
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "入力内容が空の", DOC_META[docType].label, "が ", blankCount, "件 あります。"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-ghost btn-sm",
+    onClick: onCleanupBlanks
+  }, "空の下書きを一括削除")), /*#__PURE__*/React.createElement("div", {
     className: "doc-table-wrap"
   }, filtered.length === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "empty-state"
@@ -2279,6 +2305,23 @@ function App() {
     return () => clearTimeout(t);
   }, [toast]);
   function setActiveTab(tab, docId) {
+    // 書類編集画面から離れる際、何も入力されていない下書きは確認の上で破棄する
+    if (DOC_ORDER.includes(activeTab) && activeDocId && (tab !== activeTab || docId !== activeDocId)) {
+      const list = data.docs[activeTab] || [];
+      const current = list.find(d => d.id === activeDocId);
+      if (current && isDocBlank(current)) {
+        const discard = confirm(`この${DOC_META[activeTab].label}には何も入力されていません。\n` + `「OK」で破棄する / 「キャンセル」でこのまま一覧に残す`);
+        if (discard) {
+          setData(d => ({
+            ...d,
+            docs: {
+              ...d.docs,
+              [activeTab]: d.docs[activeTab].filter(x => x.id !== activeDocId)
+            }
+          }));
+        }
+      }
+    }
     setActiveTabRaw(tab);
     setActiveDocId(docId || null);
   }
@@ -2334,6 +2377,19 @@ function App() {
       }
     }));
     if (activeDocId === id) setActiveTab(docType, null);
+  }
+  function cleanupBlankDocs(docType) {
+    const count = (data.docs[docType] || []).filter(isDocBlank).length;
+    if (count === 0) return;
+    if (!confirm(`入力内容が空の${DOC_META[docType].label}を ${count}件 まとめて削除します。よろしいですか？`)) return;
+    setData(d => ({
+      ...d,
+      docs: {
+        ...d.docs,
+        [docType]: d.docs[docType].filter(x => !isDocBlank(x))
+      }
+    }));
+    setToast(`空の下書き ${count}件 を削除しました`);
   }
   function handleCreateNext(sourceDoc, nextType) {
     const newId = uid();
@@ -2465,7 +2521,8 @@ function App() {
         onOpen: id => setActiveTab(activeTab, id),
         onNew: () => createAndOpen(activeTab),
         onDelete: id => deleteDoc(activeTab, id),
-        onCreateFromSource: handleCreateNext
+        onCreateFromSource: handleCreateNext,
+        onCleanupBlanks: () => cleanupBlankDocs(activeTab)
       });
     }
   }
